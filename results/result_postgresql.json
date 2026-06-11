@@ -1,0 +1,50 @@
+{
+  "engine": "postgresql",
+  "operations": {
+    "point_lookup": {
+      "count": 200,
+      "mean_ms": 0.185,
+      "p50_ms": 0.184,
+      "p95_ms": 0.208,
+      "p99_ms": 0.238,
+      "min_ms": 0.167,
+      "max_ms": 0.268
+    },
+    "one_hop": {
+      "count": 200,
+      "mean_ms": 0.228,
+      "p50_ms": 0.214,
+      "p95_ms": 0.289,
+      "p99_ms": 0.465,
+      "min_ms": 0.191,
+      "max_ms": 0.604
+    },
+    "two_hop": {
+      "count": 200,
+      "mean_ms": 0.441,
+      "p50_ms": 0.432,
+      "p95_ms": 0.524,
+      "p99_ms": 0.681,
+      "min_ms": 0.28,
+      "max_ms": 1.189
+    },
+    "three_hop": {
+      "count": 200,
+      "mean_ms": 1.359,
+      "p50_ms": 1.284,
+      "p95_ms": 2.038,
+      "p99_ms": 2.55,
+      "min_ms": 0.401,
+      "max_ms": 3.877
+    },
+    "shortest_path": {
+      "count": 200,
+      "mean_ms": 136.764,
+      "p50_ms": 138.63,
+      "p95_ms": 211.43,
+      "p99_ms": 259.38,
+      "min_ms": 21.756,
+      "max_ms": 282.786
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "engine": "neo4j",
+  "operations": {
+    "point_lookup": {
+      "count": 200,
+      "mean_ms": 2.574,
+      "p50_ms": 2.366,
+      "p95_ms": 4.262,
+      "p99_ms": 5.711,
+      "min_ms": 1.732,
+      "max_ms": 6.772
+    },
+    "one_hop": {
+      "count": 200,
+      "mean_ms": 2.548,
+      "p50_ms": 2.574,
+      "p95_ms": 3.586,
+      "p99_ms": 4.897,
+      "min_ms": 1.481,
+      "max_ms": 5.625
+    },
+    "two_hop": {
+      "count": 200,
+      "mean_ms": 2.129,
+      "p50_ms": 2.105,
+      "p95_ms": 3.082,
+      "p99_ms": 3.78,
+      "min_ms": 1.396,
+      "max_ms": 4.703
+    },
+    "three_hop": {
+      "count": 200,
+      "mean_ms": 2.62,
+      "p50_ms": 2.506,
+      "p95_ms": 3.764,
+      "p99_ms": 4.123,
+      "min_ms": 1.537,
+      "max_ms": 4.901
+    },
+    "shortest_path": {
+      "count": 200,
+      "mean_ms": 2.053,
+      "p50_ms": 1.969,
+      "p95_ms": 2.808,
+      "p99_ms": 3.403,
+      "min_ms": 1.364,
+      "max_ms": 4.374
+    }
+  }
+}

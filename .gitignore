@@ -1,0 +1,6 @@
+.secrets/
+benchmark/data/
+logs/
+__pycache__/
+*.pyc
+.venv/

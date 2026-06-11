@@ -1,0 +1,50 @@
+{
+  "engine": "cosmos_gremlin",
+  "operations": {
+    "point_lookup": {
+      "count": 200,
+      "mean_ms": 10.129,
+      "p50_ms": 5.533,
+      "p95_ms": 25.776,
+      "p99_ms": 32.51,
+      "min_ms": 4.322,
+      "max_ms": 38.055
+    },
+    "one_hop": {
+      "count": 200,
+      "mean_ms": 15.422,
+      "p50_ms": 14.415,
+      "p95_ms": 22.013,
+      "p99_ms": 38.872,
+      "min_ms": 8.109,
+      "max_ms": 41.018
+    },
+    "two_hop": {
+      "count": 200,
+      "mean_ms": 33.717,
+      "p50_ms": 33.502,
+      "p95_ms": 46.793,
+      "p99_ms": 62.132,
+      "min_ms": 7.959,
+      "max_ms": 69.955
+    },
+    "three_hop": {
+      "count": 200,
+      "mean_ms": 137.689,
+      "p50_ms": 134.93,
+      "p95_ms": 211.412,
+      "p99_ms": 247.408,
+      "min_ms": 8.042,
+      "max_ms": 260.082
+    },
+    "shortest_path": {
+      "count": 200,
+      "mean_ms": 10582.409,
+      "p50_ms": 10631.365,
+      "p95_ms": 15669.982,
+      "p99_ms": 18624.64,
+      "min_ms": 2217.372,
+      "max_ms": 23511.646
+    }
+  }
+}

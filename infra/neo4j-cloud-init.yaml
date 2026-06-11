@@ -1,0 +1,36 @@
+#cloud-config
+package_update: true
+packages:
+- openjdk-17-jre-headless
+- python3-pip
+- python3-venv
+runcmd:
+- |
+  set -e
+  # Mount the data disk (assumes /dev/disk/azure/scsi1/lun0) at /data
+  DISK=$(ls /dev/disk/azure/scsi1/lun0* 2>/dev/null | head -n1 || true)
+  if [ -n "$DISK" ]; then
+    if ! blkid "$DISK"; then mkfs.ext4 -F "$DISK"; fi
+    mkdir -p /data
+    mount "$DISK" /data
+    echo "$DISK /data ext4 defaults,nofail 0 2" >> /etc/fstab
+  fi
+- wget -qO - https://debian.neo4j.com/neotechnology.gpg.key | gpg --dearmor -o /usr/share/keyrings/neo4j.gpg
+- echo 'deb [signed-by=/usr/share/keyrings/neo4j.gpg] https://debian.neo4j.com stable 5' > /etc/apt/sources.list.d/neo4j.list
+- apt-get update
+- DEBIAN_FRONTEND=noninteractive apt-get install -y neo4j
+- systemctl stop neo4j || true
+- |
+  # Point Neo4j data dir to /data and tune memory for a 16GB VM
+  mkdir -p /data/neo4j
+  chown -R neo4j:neo4j /data/neo4j
+  sed -i 's|#server.directories.data=.*|server.directories.data=/data/neo4j|' /etc/neo4j/neo4j.conf
+  sed -i 's|#server.default_listen_address=.*|server.default_listen_address=0.0.0.0|' /etc/neo4j/neo4j.conf
+  echo 'server.memory.heap.initial_size=4g' >> /etc/neo4j/neo4j.conf
+  echo 'server.memory.heap.max_size=4g' >> /etc/neo4j/neo4j.conf
+  echo 'server.memory.pagecache.size=6g' >> /etc/neo4j/neo4j.conf
+- neo4j-admin dbms set-initial-password 'Neo4jPerf!2026'
+- systemctl enable neo4j
+- systemctl start neo4j
+- pip3 install --break-system-packages neo4j==5.24.0
+- touch /var/lib/cloud/neo4j-ready
