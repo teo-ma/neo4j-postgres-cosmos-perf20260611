@@ -1,44 +1,38 @@
 # Neo4j / PostgreSQL / Cosmos DB Graph Performance Benchmark
 
-This repository benchmarks three graph-friendly data stores on the same synthetic social graph workload:
+## Executive Summary
+
+This project compares three graph-capable data stores on the same synthetic social graph workload:
 
 - Neo4j Community Edition on an Azure VM
 - Azure Database for PostgreSQL Flexible Server
 - Azure Cosmos DB Gremlin API
 
-The goal is to compare how each engine behaves for graph workloads that matter in practice: point lookups, 1-hop/2-hop/3-hop traversals, and shortest-path queries.
+The benchmark shows a clear split in suitability:
 
-## What Was Tested
+- PostgreSQL is the fastest option for point lookups and shallow traversals.
+- Neo4j is the strongest option for multi-hop traversal and shortest-path queries.
+- Cosmos DB Gremlin is functional for graph storage, but it is much slower on traversal-heavy workloads.
+
+For reporting purposes, the most relevant metric is not the single fastest query, but how the engine behaves as traversal depth increases and whether tail latency remains stable.
+
+## Scope and Methodology
 
 - Data set: 100,000 nodes and 1,000,000 edges
-- Workload: synthetic social graph with skewed hubs
-- Client side: all benchmarks were executed from the same Azure VM in `centralus` to keep network conditions consistent
-- Iterations: 200 measured runs per operation, after warmup
+- Graph shape: synthetic social graph with skewed hubs
+- Execution environment: all benchmarks ran from the same Azure VM in `centralus`
+- Measurement model: 200 measured runs per operation, after warmup
+- Operations tested: point lookup, 1-hop neighbors, 2-hop count, 3-hop count, shortest path up to 5 hops
 
-The raw benchmark outputs and generated summary are in `results/`:
+Generated outputs and the full result report are stored in `results/`:
 
 - `results/result_neo4j.json`
 - `results/result_postgresql.json`
 - `results/result_cosmos_gremlin.json`
 - `results/REPORT.md`
+- `results/benchmark_p50_comparison.png`
 
-## Test Flow
-
-1. Provision Azure resources:
-   - Neo4j VM
-   - PostgreSQL Flexible Server
-   - Cosmos DB Gremlin account and graph container
-2. Generate the synthetic graph data locally.
-3. Load the same logical graph into each engine.
-4. Run the benchmark suite for the five operations below:
-   - point lookup
-   - 1-hop neighbors
-   - 2-hop count
-   - 3-hop count
-   - shortest path (up to 5 hops)
-5. Aggregate the results into a comparison report.
-
-## Key Results
+## Results Summary
 
 ### P50 latency in milliseconds
 
@@ -50,29 +44,29 @@ The raw benchmark outputs and generated summary are in `results/`:
 | 3-hop count | 2.51 | 1.28 | 134.93 |
 | Shortest path (<=5) | 1.97 | 138.63 | 10631.36 |
 
-### Main takeaway
+### Interpretation
 
-- PostgreSQL was fastest for point lookups and shallow traversals.
-- Neo4j was dramatically faster for shortest-path queries and stayed stable as traversal depth increased.
-- Cosmos DB Gremlin worked correctly, but it was much slower for traversal-heavy workloads, especially shortest path.
+- PostgreSQL performs best when the workload is dominated by indexed entity lookups and shallow joins.
+- Neo4j maintains low and stable latency as traversal depth grows, which is the key requirement for interactive graph exploration.
+- Cosmos DB Gremlin incurs significant overhead for traversal-heavy queries, especially shortest path, where network and distributed execution costs dominate.
 
 ### Visualization
 
 ![P50 graph database comparison](results/benchmark_p50_comparison.png)
 
-## How To Read This For Drug Discovery
+## Implications for Drug Discovery
 
-If you use a graph database for drug discovery, the most important signals are the multi-hop and shortest-path numbers, not just point lookups. Typical questions in this domain include target discovery, pathway exploration, drug repurposing, and evidence-chain tracing across genes, proteins, compounds, diseases, and literature. Those workloads depend on relationship traversal, explainability, and low tail latency during interactive analysis.
+In drug discovery, the highest-value queries are usually multi-hop and explainable: target discovery, pathway tracing, drug repurposing, and evidence-chain analysis across genes, proteins, compounds, diseases, and literature. For these workloads, the most important indicators are multi-hop latency, shortest-path latency, and tail latency at P95/P99.
 
-In that context, this benchmark suggests:
+Practical reading of this benchmark:
 
-- Neo4j is the best fit when the core workload is graph traversal, hypothesis generation, and path explanation.
-- PostgreSQL is a good fit for structured lookups and shallow relationship queries, especially when the graph is still small or the workload is mostly relational.
-- Cosmos DB Gremlin is better positioned for managed, distributed access patterns than for latency-sensitive traversal-heavy research workflows.
+- Neo4j is the best fit when graph traversal and path explanation are part of the core analysis workflow.
+- PostgreSQL is appropriate for structured lookups, light relationship navigation, and broader relational support.
+- Cosmos DB Gremlin is a better fit for managed, distributed access patterns than for latency-sensitive research exploration.
 
-## Reproduce
+## Reproducibility
 
-The main scripts are under `benchmark/` and `infra/`.
+Main scripts:
 
 - `benchmark/generate_data.py` generates the data set
 - `benchmark/bench_neo4j.py` loads and benchmarks Neo4j
@@ -90,7 +84,7 @@ Infrastructure helpers:
 
 ## Cleanup
 
-When you are done, delete all billable Azure resources:
+When the comparison is no longer needed, delete the Azure resources to stop billing:
 
 ```bash
 bash infra/teardown.sh
