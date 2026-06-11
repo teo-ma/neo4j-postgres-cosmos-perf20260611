@@ -56,6 +56,16 @@ The raw benchmark outputs and generated summary are in `results/`:
 - Neo4j was dramatically faster for shortest-path queries and stayed stable as traversal depth increased.
 - Cosmos DB Gremlin worked correctly, but it was much slower for traversal-heavy workloads, especially shortest path.
 
+## How To Read This For Drug Discovery
+
+If you use a graph database for drug discovery, the most important signals are the multi-hop and shortest-path numbers, not just point lookups. Typical questions in this domain include target discovery, pathway exploration, drug repurposing, and evidence-chain tracing across genes, proteins, compounds, diseases, and literature. Those workloads depend on relationship traversal, explainability, and low tail latency during interactive analysis.
+
+In that context, this benchmark suggests:
+
+- Neo4j is the best fit when the core workload is graph traversal, hypothesis generation, and path explanation.
+- PostgreSQL is a good fit for structured lookups and shallow relationship queries, especially when the graph is still small or the workload is mostly relational.
+- Cosmos DB Gremlin is better positioned for managed, distributed access patterns than for latency-sensitive traversal-heavy research workflows.
+
 ## Reproduce
 
 The main scripts are under `benchmark/` and `infra/`.
