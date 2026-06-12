@@ -17,10 +17,10 @@ import numpy as np
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 OPS = [
     ("point_lookup", "Point lookup"),
-    ("three_hop", "3-hop"),
-    ("four_hop", "4-hop"),
-    ("five_hop", "5-hop"),
-    ("shortest_path", "Shortest path (<=7)"),
+    ("targets_2hop", "2-hop (PPI)"),
+    ("pathway_3hop", "3-hop (pathway)"),
+    ("reach_4hop", "4-hop (reach)"),
+    ("evidence_path", "Evidence path (<=7)"),
 ]
 ENGINES = [
     ("neo4j", "Neo4j Community (VM)", "#4C72B0"),
@@ -63,7 +63,7 @@ def main():
 
     ax.set_yscale("log")
     ax.set_ylabel("P50 latency (ms, log scale)")
-    ax.set_title("Graph DB Deep-Hop Performance (P50, lower is better)")
+    ax.set_title("Drug-Discovery Graph DB Performance (P50, lower is better)")
     ax.set_xticks(x)
     ax.set_xticklabels(op_labels)
     ax.legend()

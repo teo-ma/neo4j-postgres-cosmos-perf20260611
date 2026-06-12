@@ -45,87 +45,107 @@ def load():
     conn = connect()
     conn.autocommit = False
     with conn.cursor() as c:
-        c.execute("DROP TABLE IF EXISTS knows; DROP TABLE IF EXISTS person;")
-        c.execute("CREATE TABLE person (id int PRIMARY KEY, name text, "
-                  "age int, city text)")
-        c.execute("CREATE TABLE knows (src int, dst int, since int)")
+        c.execute("DROP TABLE IF EXISTS edges; DROP TABLE IF EXISTS nodes;")
+        c.execute("CREATE TABLE nodes (id int PRIMARY KEY, type text, name text)")
+        c.execute("CREATE TABLE edges (src int, dst int, rel text)")
         conn.commit()
 
         t0 = time.time()
-        print("COPY persons...")
-        with open(os.path.join(DATA_DIR, "persons.csv")) as f:
-            c.copy_expert("COPY person(id,name,age,city) FROM STDIN WITH CSV HEADER", f)
+        print("COPY nodes...")
+        with open(os.path.join(DATA_DIR, "nodes.csv")) as f:
+            c.copy_expert("COPY nodes(id,type,name) FROM STDIN WITH CSV HEADER", f)
         conn.commit()
-        print(f"  persons in {time.time()-t0:.1f}s")
+        print(f"  nodes in {time.time()-t0:.1f}s")
 
         t0 = time.time()
-        print("COPY knows...")
-        with open(os.path.join(DATA_DIR, "knows.csv")) as f:
-            c.copy_expert("COPY knows(src,dst,since) FROM STDIN WITH CSV HEADER", f)
+        print("COPY edges...")
+        with open(os.path.join(DATA_DIR, "edges.csv")) as f:
+            c.copy_expert("COPY edges(src,dst,rel) FROM STDIN WITH CSV HEADER", f)
         conn.commit()
         print(f"  edges in {time.time()-t0:.1f}s")
 
         t0 = time.time()
         print("Creating indexes...")
-        c.execute("CREATE INDEX idx_knows_src ON knows(src)")
-        c.execute("CREATE INDEX idx_knows_dst ON knows(dst)")
-        c.execute("ANALYZE person; ANALYZE knows;")
+        c.execute("CREATE INDEX idx_edges_src_rel ON edges(src, rel)")
+        c.execute("CREATE INDEX idx_edges_src ON edges(src)")
+        c.execute("CREATE INDEX idx_edges_dst ON edges(dst)")
+        c.execute("CREATE INDEX idx_nodes_type ON nodes(type)")
+        c.execute("ANALYZE nodes; ANALYZE edges;")
         conn.commit()
         print(f"  indexes in {time.time()-t0:.1f}s")
     conn.close()
 
 
 def bench():
-    ids = bc.sample_ids(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
-    pairs = bc.sample_pairs(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
+    cids = bc.sample_compounds(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
+    pairs = bc.sample_evidence_pairs(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
     conn = connect()
     conn.autocommit = True
     results = {}
     with conn.cursor() as c:
         def point_lookup(i):
-            c.execute("SELECT name FROM person WHERE id=%s", (ids[i],))
+            c.execute("SELECT name FROM nodes WHERE id=%s", (cids[i],))
             c.fetchall()
 
-        def three_hop(i):
+        def targets_2hop(i):
             c.execute(
-                "SELECT count(DISTINCT k3.dst) FROM knows k1 "
-                "JOIN knows k2 ON k1.dst=k2.src "
-                "JOIN knows k3 ON k2.dst=k3.src WHERE k1.src=%s", (ids[i],))
+                "SELECT count(DISTINCT e2.dst) FROM edges e1 "
+                "JOIN edges e2 ON e1.dst=e2.src "
+                "WHERE e1.src=%s AND e1.rel='TARGETS' AND e2.rel='INTERACTS'",
+                (cids[i],))
             c.fetchall()
 
-        def four_hop(i):
+        def pathway_3hop(i):
             c.execute(
-                "SELECT count(DISTINCT k4.dst) FROM knows k1 "
-                "JOIN knows k2 ON k1.dst=k2.src "
-                "JOIN knows k3 ON k2.dst=k3.src "
-                "JOIN knows k4 ON k3.dst=k4.src WHERE k1.src=%s", (ids[i],))
+                "SELECT count(DISTINCT e3.dst) FROM edges e1 "
+                "JOIN edges e2 ON e1.dst=e2.src "
+                "JOIN edges e3 ON e2.dst=e3.src "
+                "WHERE e1.src=%s AND e1.rel='TARGETS' "
+                "AND e2.rel='PARTICIPATES_IN' AND e3.rel='IMPLICATED_IN'",
+                (cids[i],))
             c.fetchall()
 
-        def five_hop(i):
+        def reach_4hop(i):
             c.execute(
-                "SELECT count(DISTINCT k5.dst) FROM knows k1 "
-                "JOIN knows k2 ON k1.dst=k2.src "
-                "JOIN knows k3 ON k2.dst=k3.src "
-                "JOIN knows k4 ON k3.dst=k4.src "
-                "JOIN knows k5 ON k4.dst=k5.src WHERE k1.src=%s", (ids[i],))
+                "SELECT count(DISTINCT e4.dst) FROM edges e1 "
+                "JOIN edges e2 ON e1.dst=e2.src "
+                "JOIN edges e3 ON e2.dst=e3.src "
+                "JOIN edges e4 ON e3.dst=e4.src "
+                "WHERE e1.src=%s AND e1.rel='TARGETS' AND e2.rel='INTERACTS' "
+                "AND e3.rel='PARTICIPATES_IN' AND e4.rel='IMPLICATED_IN'",
+                (cids[i],))
             c.fetchall()
 
-        def shortest_path(i):
+        def evidence_path(i):
             src, dst = pairs[i]
-            c.execute(
-                "WITH RECURSIVE bfs(node, depth) AS ("
-                "  SELECT %s::int, 0"
-                "  UNION ALL"
-                "  SELECT k.dst, b.depth+1 FROM bfs b "
-                "    JOIN knows k ON k.src=b.node WHERE b.depth < 7"
-                ") SELECT min(depth) FROM bfs WHERE node=%s",
-                (src, dst))
-            c.fetchall()
+            # Level-synchronized BFS with a global visited set: expand the
+            # frontier one hop at a time (one SQL round-trip per level) and
+            # dedup against everything already seen. This visits each node at
+            # most once, avoiding the exponential simple-path enumeration a
+            # single recursive CTE would incur on a hub-skewed graph, while
+            # still returning the true shortest hop count (<=7) like the
+            # shortestPath/simplePath traversals on Neo4j and Cosmos.
+            if src == dst:
+                return
+            visited = {src}
+            frontier = [src]
+            for _depth in range(1, 8):
+                c.execute(
+                    "SELECT DISTINCT dst FROM edges WHERE src = ANY(%s)",
+                    (frontier,))
+                nxt = [r[0] for r in c.fetchall() if r[0] not in visited]
+                if not nxt:
+                    break
+                if dst in nxt:
+                    break
+                visited.update(nxt)
+                frontier = nxt
+
 
         fns = {"point_lookup": point_lookup,
-               "three_hop": three_hop, "four_hop": four_hop,
-               "five_hop": five_hop,
-               "shortest_path": shortest_path}
+               "targets_2hop": targets_2hop, "pathway_3hop": pathway_3hop,
+               "reach_4hop": reach_4hop,
+               "evidence_path": evidence_path}
         for key, _desc in bc.OPERATIONS:
             print(f"Running {key}...")
             results[key] = bc.time_op(fns[key])

@@ -1,6 +1,6 @@
-# Graph DB Performance Comparison
+# Graph DB Performance Comparison — Drug-Discovery Knowledge Graph
 
-Workload: synthetic social graph. All engines run the same logical operations on identical data.
+Workload: synthetic drug-discovery knowledge graph (Hetionet-style, ~20,000 nodes / 200,000 edges). All engines run the same logical operations on identical data.
 
 Compute: ~4 vCPU / 16 GB class for each engine.
 
@@ -9,38 +9,38 @@ Compute: ~4 vCPU / 16 GB class for each engine.
 
 | Operation | Neo4j Community (VM) | PostgreSQL Flexible | Cosmos DB (Gremlin) |
 |---|---|---|---|
-| Point lookup (by id) | 6.72 | 0.16 | 6.48 |
-| 3-hop count | 3.31 | 1.19 | 141.20 |
-| 4-hop count | 8.87 | 7.85 | 1025.99 |
-| 5-hop count | 58.40 | 78.67 | 7840.78 |
-| Shortest path (<=7) | 1.98 | 13929.52 | 20000.00 |
+| Compound point lookup | 2.40 | 0.17 | 6.28 |
+| Compound->target->PPI (2-hop) | 1.83 | 0.40 | 37.45 |
+| Compound->target->pathway->disease (3-hop) | 1.78 | 0.92 | 125.08 |
+| Compound->target->PPI->pathway->disease (4-hop) | 3.56 | 4.83 | 598.69 |
+| Shortest evidence chain Compound->Disease (<=7) | 1.38 | 15.44 | 20000.00 |
 
 ## P95 (MS)
 
 | Operation | Neo4j Community (VM) | PostgreSQL Flexible | Cosmos DB (Gremlin) |
 |---|---|---|---|
-| Point lookup (by id) | 17.66 | 0.21 | 32.27 |
-| 3-hop count | 5.48 | 1.70 | 219.32 |
-| 4-hop count | 13.30 | 12.44 | 1690.17 |
-| 5-hop count | 86.68 | 122.32 | 11441.93 |
-| Shortest path (<=7) | 3.62 | 21406.21 | 20000.00 |
+| Compound point lookup | 3.60 | 0.20 | 9.78 |
+| Compound->target->PPI (2-hop) | 3.85 | 0.69 | 51.32 |
+| Compound->target->pathway->disease (3-hop) | 2.82 | 1.59 | 177.48 |
+| Compound->target->PPI->pathway->disease (4-hop) | 4.94 | 7.10 | 779.68 |
+| Shortest evidence chain Compound->Disease (<=7) | 1.83 | 59.64 | 20000.00 |
 
 ## MEAN (MS)
 
 | Operation | Neo4j Community (VM) | PostgreSQL Flexible | Cosmos DB (Gremlin) |
 |---|---|---|---|
-| Point lookup (by id) | 7.88 | 0.19 | 12.26 |
-| 3-hop count | 3.52 | 1.23 | 144.03 |
-| 4-hop count | 9.07 | 8.02 | 1097.47 |
-| 5-hop count | 59.01 | 79.88 | 8209.57 |
-| Shortest path (<=7) | 2.57 | 13742.15 | 20000.00 |
+| Compound point lookup | 2.51 | 0.17 | 11.12 |
+| Compound->target->PPI (2-hop) | 2.25 | 0.54 | 38.21 |
+| Compound->target->pathway->disease (3-hop) | 1.89 | 1.01 | 125.73 |
+| Compound->target->PPI->pathway->disease (4-hop) | 3.68 | 4.87 | 597.50 |
+| Shortest evidence chain Compound->Disease (<=7) | 1.45 | 20.14 | 20000.00 |
 
 ## Fastest engine per operation (by P50)
 
 | Operation | Winner | P50 (ms) |
 |---|---|---|
-| Point lookup (by id) | PostgreSQL Flexible | 0.16 |
-| 3-hop count | PostgreSQL Flexible | 1.19 |
-| 4-hop count | PostgreSQL Flexible | 7.85 |
-| 5-hop count | Neo4j Community (VM) | 58.40 |
-| Shortest path (<=7) | Neo4j Community (VM) | 1.98 |
+| Compound point lookup | PostgreSQL Flexible | 0.17 |
+| Compound->target->PPI (2-hop) | PostgreSQL Flexible | 0.40 |
+| Compound->target->pathway->disease (3-hop) | PostgreSQL Flexible | 0.92 |
+| Compound->target->PPI->pathway->disease (4-hop) | Neo4j Community (VM) | 3.56 |
+| Shortest evidence chain Compound->Disease (<=7) | Neo4j Community (VM) | 1.38 |

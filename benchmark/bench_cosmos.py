@@ -9,6 +9,7 @@ Usage:
 """
 import asyncio
 import csv
+import logging
 import os
 import queue
 import sys
@@ -18,6 +19,11 @@ import time
 from gremlin_python.driver import client, serializer
 
 import bench_common as bc
+
+# Bulk loads provoke a flood of 429 (RequestRateTooLarge) responses that the
+# gremlinpython client logs verbatim with full diagnostics, producing gigabytes
+# of noise. _retry() already handles throttling, so silence client logging.
+logging.disable(logging.CRITICAL)
 
 HOST = os.environ["COSMOS_HOST"]
 KEY = os.environ["COSMOS_KEY"]
@@ -90,39 +96,36 @@ def _timed_op(fn, iterations, warmup, timeout):
 
 def load():
     # Partition key strategy: pk = id % 100 to spread across partitions.
-    persons = []
-    with open(os.path.join(DATA_DIR, "persons.csv")) as f:
+    nodes = []
+    with open(os.path.join(DATA_DIR, "nodes.csv")) as f:
         for r in csv.DictReader(f):
-            persons.append(r)
+            nodes.append(r)
     edges = []
-    with open(os.path.join(DATA_DIR, "knows.csv")) as f:
+    with open(os.path.join(DATA_DIR, "edges.csv")) as f:
         for e in csv.DictReader(f):
             edges.append(e)
 
-    print(f"Loading {len(persons)} vertices with {LOAD_THREADS} threads...")
+    print(f"Loading {len(nodes)} vertices with {LOAD_THREADS} threads...")
     t0 = time.time()
 
     def vertex_query(c, r):
         pk = int(r["id"]) % 100
-        q = ("g.addV('person').property('id', vid).property('pk', pk)"
-             ".property('name', name).property('age', age)"
-             ".property('city', city)")
-        _submit(c, q, {"vid": str(r["id"]), "pk": str(pk),
-                       "name": r["name"], "age": int(r["age"]),
-                       "city": r["city"]})
+        q = ("g.addV(vlabel).property('id', vid).property('pk', pk)"
+             ".property('name', name)")
+        _submit(c, q, {"vlabel": r["type"], "vid": str(r["id"]),
+                       "pk": str(pk), "name": r["name"]})
 
-    _run_pool(vertex_query, persons, "vertices")
+    _run_pool(vertex_query, nodes, "vertices")
     print(f"Vertices loaded in {time.time()-t0:.1f}s")
 
     print(f"Loading {len(edges)} edges...")
     t0 = time.time()
 
     def edge_query(c, e):
-        q = ("g.V().has('person','id',src)"
-             ".addE('knows').to(g.V().has('person','id',dst))"
-             ".property('since', since)")
+        q = ("g.V().has('id',src)"
+             ".addE(rel).to(g.V().has('id',dst))")
         _submit(c, q, {"src": str(e["src"]), "dst": str(e["dst"]),
-                       "since": int(e["since"])})
+                       "rel": e["rel"]})
 
     _run_pool(edge_query, edges, "edges")
     print(f"Edges loaded in {time.time()-t0:.1f}s")
@@ -176,34 +179,35 @@ def _retry(op, c, item, attempts=6):
 
 
 def bench():
-    ids = bc.sample_ids(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
-    pairs = bc.sample_pairs(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
+    cids = bc.sample_compounds(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
+    pairs = bc.sample_evidence_pairs(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
     c = make_client()
     results = {}
     try:
         def point_lookup(i):
-            _submit_timed(c, "g.V().has('person','id',vid).values('name')",
-                          {"vid": str(ids[i])}, SHALLOW_TIMEOUT)
+            _submit_timed(c, "g.V().has('id',vid).values('name')",
+                          {"vid": str(cids[i])}, SHALLOW_TIMEOUT)
 
-        def three_hop(i):
-            _submit_timed(c, "g.V().has('person','id',vid).out('knows')"
-                             ".out('knows').out('knows').dedup().count()",
-                          {"vid": str(ids[i])}, SHALLOW_TIMEOUT)
+        def targets_2hop(i):
+            _submit_timed(c, "g.V().has('id',vid).out('TARGETS')"
+                             ".out('INTERACTS').dedup().count()",
+                          {"vid": str(cids[i])}, SHALLOW_TIMEOUT)
 
-        def four_hop(i):
-            _submit_timed(c, "g.V().has('person','id',vid).out('knows')"
-                             ".out('knows').out('knows').out('knows').dedup().count()",
-                          {"vid": str(ids[i])}, DEEP_TIMEOUT)
-
-        def five_hop(i):
-            _submit_timed(c, "g.V().has('person','id',vid).out('knows')"
-                             ".out('knows').out('knows').out('knows').out('knows')"
+        def pathway_3hop(i):
+            _submit_timed(c, "g.V().has('id',vid).out('TARGETS')"
+                             ".out('PARTICIPATES_IN').out('IMPLICATED_IN')"
                              ".dedup().count()",
-                          {"vid": str(ids[i])}, DEEP_TIMEOUT)
+                          {"vid": str(cids[i])}, SHALLOW_TIMEOUT)
 
-        def shortest_path(i):
+        def reach_4hop(i):
+            _submit_timed(c, "g.V().has('id',vid).out('TARGETS').out('INTERACTS')"
+                             ".out('PARTICIPATES_IN').out('IMPLICATED_IN')"
+                             ".dedup().count()",
+                          {"vid": str(cids[i])}, DEEP_TIMEOUT)
+
+        def evidence_path(i):
             src, dst = pairs[i]
-            _submit_timed(c, "g.V().has('person','id',s).repeat(out('knows').simplePath())"
+            _submit_timed(c, "g.V().has('id',s).repeat(out().simplePath())"
                              ".until(has('id',d).or().loops().is(7)).has('id',d)"
                              ".path().limit(1).count(local)",
                           {"s": str(src), "d": str(dst)}, DEEP_TIMEOUT)
@@ -212,10 +216,10 @@ def bench():
         # use fewer iterations + a tighter timeout so the run stays bounded.
         cfg = {
             "point_lookup": (point_lookup, bc.ITERATIONS, bc.WARMUP, SHALLOW_TIMEOUT),
-            "three_hop": (three_hop, bc.ITERATIONS, bc.WARMUP, SHALLOW_TIMEOUT),
-            "four_hop": (four_hop, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
-            "five_hop": (five_hop, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
-            "shortest_path": (shortest_path, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
+            "targets_2hop": (targets_2hop, bc.ITERATIONS, bc.WARMUP, SHALLOW_TIMEOUT),
+            "pathway_3hop": (pathway_3hop, bc.ITERATIONS, bc.WARMUP, SHALLOW_TIMEOUT),
+            "reach_4hop": (reach_4hop, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
+            "evidence_path": (evidence_path, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
         }
         for key, _desc in bc.OPERATIONS:
             fn, iters, warm, timeout = cfg[key]

@@ -6,11 +6,11 @@ import os
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 OPS = [
-    ("point_lookup", "Point lookup (by id)"),
-    ("three_hop", "3-hop count"),
-    ("four_hop", "4-hop count"),
-    ("five_hop", "5-hop count"),
-    ("shortest_path", "Shortest path (<=7)"),
+    ("point_lookup", "Compound point lookup"),
+    ("targets_2hop", "Compound->target->PPI (2-hop)"),
+    ("pathway_3hop", "Compound->target->pathway->disease (3-hop)"),
+    ("reach_4hop", "Compound->target->PPI->pathway->disease (4-hop)"),
+    ("evidence_path", "Shortest evidence chain Compound->Disease (<=7)"),
 ]
 ENGINE_LABELS = {
     "neo4j": "Neo4j Community (VM)",
@@ -39,8 +39,9 @@ def main():
         return
     engines = [e for e in ["neo4j", "postgresql", "cosmos_gremlin"] if e in res]
 
-    lines = ["# Graph DB Performance Comparison\n"]
-    lines.append("Workload: synthetic social graph. All engines run the "
+    lines = ["# Graph DB Performance Comparison — Drug-Discovery Knowledge Graph\n"]
+    lines.append("Workload: synthetic drug-discovery knowledge graph (Hetionet-style, "
+                 "~20,000 nodes / 200,000 edges). All engines run the "
                  "same logical operations on identical data.\n")
     lines.append("Compute: ~4 vCPU / 16 GB class for each engine.\n")
 

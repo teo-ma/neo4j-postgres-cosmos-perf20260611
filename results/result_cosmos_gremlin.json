@@ -3,45 +3,45 @@
   "operations": {
     "point_lookup": {
       "count": 200,
-      "mean_ms": 12.263,
-      "p50_ms": 6.478,
-      "p95_ms": 32.273,
-      "p99_ms": 37.317,
-      "min_ms": 4.659,
-      "max_ms": 45.696,
+      "mean_ms": 11.119,
+      "p50_ms": 6.279,
+      "p95_ms": 9.783,
+      "p99_ms": 33.102,
+      "min_ms": 4.87,
+      "max_ms": 811.178,
       "timeouts": 0
     },
-    "three_hop": {
+    "targets_2hop": {
       "count": 200,
-      "mean_ms": 144.031,
-      "p50_ms": 141.2,
-      "p95_ms": 219.324,
-      "p99_ms": 244.27,
-      "min_ms": 8.594,
-      "max_ms": 285.713,
+      "mean_ms": 38.207,
+      "p50_ms": 37.454,
+      "p95_ms": 51.323,
+      "p99_ms": 62.513,
+      "min_ms": 22.2,
+      "max_ms": 74.801,
       "timeouts": 0
     },
-    "four_hop": {
+    "pathway_3hop": {
+      "count": 200,
+      "mean_ms": 125.729,
+      "p50_ms": 125.085,
+      "p95_ms": 177.477,
+      "p99_ms": 190.154,
+      "min_ms": 56.566,
+      "max_ms": 260.485,
+      "timeouts": 0
+    },
+    "reach_4hop": {
       "count": 20,
-      "mean_ms": 1097.47,
-      "p50_ms": 1025.986,
-      "p95_ms": 1690.173,
-      "p99_ms": 2089.43,
-      "min_ms": 487.978,
-      "max_ms": 2089.43,
+      "mean_ms": 597.499,
+      "p50_ms": 598.689,
+      "p95_ms": 779.683,
+      "p99_ms": 847.143,
+      "min_ms": 339.467,
+      "max_ms": 847.143,
       "timeouts": 0
     },
-    "five_hop": {
-      "count": 20,
-      "mean_ms": 8209.57,
-      "p50_ms": 7840.785,
-      "p95_ms": 11441.932,
-      "p99_ms": 14037.293,
-      "min_ms": 3696.626,
-      "max_ms": 14037.293,
-      "timeouts": 0
-    },
-    "shortest_path": {
+    "evidence_path": {
       "count": 20,
       "mean_ms": 20000.0,
       "p50_ms": 20000.0,

@@ -26,81 +26,87 @@ def get_driver():
 
 
 def load(driver):
-    print("Creating constraint + indexes...")
-    with driver.session() as s:
-        s.run("CREATE CONSTRAINT person_id IF NOT EXISTS "
-              "FOR (p:Person) REQUIRE p.id IS UNIQUE")
-    # Load persons in batches
     import csv
+    from collections import defaultdict
+    print("Creating constraint...")
+    with driver.session() as s:
+        s.run("CREATE CONSTRAINT entity_id IF NOT EXISTS "
+              "FOR (n:Entity) REQUIRE n.id IS UNIQUE")
+    # Load nodes in batches
     t0 = time.time()
-    with open(os.path.join(DATA_DIR, "persons.csv")) as f:
+    with open(os.path.join(DATA_DIR, "nodes.csv")) as f:
         rows = list(csv.DictReader(f))
-    print(f"Loading {len(rows)} persons...")
+    print(f"Loading {len(rows)} nodes...")
     with driver.session() as s:
         batch = []
         for r in rows:
-            batch.append({"id": int(r["id"]), "name": r["name"],
-                          "age": int(r["age"]), "city": r["city"]})
+            batch.append({"id": int(r["id"]), "type": r["type"],
+                          "name": r["name"]})
             if len(batch) >= 5000:
-                s.run("UNWIND $rows AS r CREATE (p:Person) SET p = r", rows=batch)
+                s.run("UNWIND $rows AS r CREATE (n:Entity) SET n = r", rows=batch)
                 batch = []
         if batch:
-            s.run("UNWIND $rows AS r CREATE (p:Person) SET p = r", rows=batch)
-    print(f"Persons loaded in {time.time()-t0:.1f}s")
+            s.run("UNWIND $rows AS r CREATE (n:Entity) SET n = r", rows=batch)
+    print(f"Nodes loaded in {time.time()-t0:.1f}s")
 
+    # Group edges by relation type; relation types come from a fixed allowlist
+    # so the type can be safely interpolated into the Cypher statement.
     t0 = time.time()
-    with open(os.path.join(DATA_DIR, "knows.csv")) as f:
-        edges = list(csv.DictReader(f))
-    print(f"Loading {len(edges)} KNOWS edges...")
+    groups = defaultdict(list)
+    with open(os.path.join(DATA_DIR, "edges.csv")) as f:
+        for e in csv.DictReader(f):
+            groups[e["rel"]].append({"src": int(e["src"]), "dst": int(e["dst"])})
+    allowed = {"TARGETS", "INTERACTS", "ENCODES", "ASSOCIATED_WITH",
+               "PARTICIPATES_IN", "IMPLICATED_IN", "TREATS"}
+    total = 0
     with driver.session() as s:
-        batch = []
-        for e in edges:
-            batch.append({"src": int(e["src"]), "dst": int(e["dst"]),
-                          "since": int(e["since"])})
-            if len(batch) >= 10000:
-                s.run("UNWIND $rows AS r MATCH (a:Person {id:r.src}), "
-                      "(b:Person {id:r.dst}) CREATE (a)-[:KNOWS {since:r.since}]->(b)",
+        for rel, items in groups.items():
+            if rel not in allowed:
+                continue
+            print(f"  {rel}: {len(items)} edges")
+            for i in range(0, len(items), 10000):
+                batch = items[i:i + 10000]
+                s.run(f"UNWIND $rows AS r MATCH (a:Entity {{id:r.src}}),"
+                      f"(b:Entity {{id:r.dst}}) CREATE (a)-[:{rel}]->(b)",
                       rows=batch)
-                batch = []
-        if batch:
-            s.run("UNWIND $rows AS r MATCH (a:Person {id:r.src}), "
-                  "(b:Person {id:r.dst}) CREATE (a)-[:KNOWS {since:r.since}]->(b)",
-                  rows=batch)
-    print(f"Edges loaded in {time.time()-t0:.1f}s")
+                total += len(batch)
+    print(f"{total} edges loaded in {time.time()-t0:.1f}s")
 
 
 def bench(driver):
-    ids = bc.sample_ids(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
-    pairs = bc.sample_pairs(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
+    cids = bc.sample_compounds(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
+    pairs = bc.sample_evidence_pairs(bc.NUM_NODES, bc.ITERATIONS + bc.WARMUP)
     results = {}
 
     with driver.session() as s:
         def point_lookup(i):
-            s.run("MATCH (p:Person {id:$id}) RETURN p.name",
-                  id=ids[i]).consume()
+            s.run("MATCH (c:Entity {id:$id}) RETURN c.name",
+                  id=cids[i]).consume()
 
-        def three_hop(i):
-            s.run("MATCH (p:Person {id:$id})-[:KNOWS*3]->(f) "
-                  "RETURN count(DISTINCT f)", id=ids[i]).consume()
+        def targets_2hop(i):
+            s.run("MATCH (c:Entity {id:$id})-[:TARGETS]->()-[:INTERACTS]->(p) "
+                  "RETURN count(DISTINCT p)", id=cids[i]).consume()
 
-        def four_hop(i):
-            s.run("MATCH (p:Person {id:$id})-[:KNOWS*4]->(f) "
-                  "RETURN count(DISTINCT f)", id=ids[i]).consume()
+        def pathway_3hop(i):
+            s.run("MATCH (c:Entity {id:$id})-[:TARGETS]->()"
+                  "-[:PARTICIPATES_IN]->()-[:IMPLICATED_IN]->(d) "
+                  "RETURN count(DISTINCT d)", id=cids[i]).consume()
 
-        def five_hop(i):
-            s.run("MATCH (p:Person {id:$id})-[:KNOWS*5]->(f) "
-                  "RETURN count(DISTINCT f)", id=ids[i]).consume()
+        def reach_4hop(i):
+            s.run("MATCH (c:Entity {id:$id})-[:TARGETS]->()-[:INTERACTS]->()"
+                  "-[:PARTICIPATES_IN]->()-[:IMPLICATED_IN]->(d) "
+                  "RETURN count(DISTINCT d)", id=cids[i]).consume()
 
-        def shortest_path(i):
+        def evidence_path(i):
             src, dst = pairs[i]
-            s.run("MATCH (a:Person {id:$s}),(b:Person {id:$d}), "
-                  "p = shortestPath((a)-[:KNOWS*..7]->(b)) RETURN length(p)",
+            s.run("MATCH (a:Entity {id:$s}),(b:Entity {id:$d}), "
+                  "p = shortestPath((a)-[*..7]->(b)) RETURN length(p)",
                   s=src, d=dst).consume()
 
         fns = {"point_lookup": point_lookup,
-               "three_hop": three_hop, "four_hop": four_hop,
-               "five_hop": five_hop,
-               "shortest_path": shortest_path}
+               "targets_2hop": targets_2hop, "pathway_3hop": pathway_3hop,
+               "reach_4hop": reach_4hop,
+               "evidence_path": evidence_path}
         for key, _desc in bc.OPERATIONS:
             print(f"Running {key}...")
             results[key] = bc.time_op(fns[key])
