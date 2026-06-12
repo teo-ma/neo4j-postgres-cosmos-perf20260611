@@ -19,7 +19,7 @@ from gremlin_python.driver import client, serializer
 
 import bench_common as bc
 
-HOST = os.environ["COSMOS_HOST"]            # <acct>.gremlin.cosmos.azure.com
+HOST = os.environ["COSMOS_HOST"]
 KEY = os.environ["COSMOS_KEY"]
 DB = os.environ.get("COSMOS_DB", "graphdb")
 GRAPH = os.environ.get("COSMOS_GRAPH", "social")
@@ -28,8 +28,7 @@ LOAD_THREADS = int(os.environ.get("COSMOS_LOAD_THREADS", "32"))
 
 
 def _ensure_event_loop():
-    """gremlinpython's aiohttp transport needs an event loop bound to the
-    current thread. Worker threads have none by default, so create one."""
+    """gremlinpython's aiohttp transport needs an event loop bound to the current thread."""
     try:
         asyncio.get_event_loop()
     except RuntimeError:
@@ -80,8 +79,6 @@ def load():
     t0 = time.time()
 
     def edge_query(c, e):
-        # Use partition-key-scoped lookups so the edge add stays in-partition
-        # where possible; both endpoints addressed by id.
         q = ("g.V().has('person','id',src)"
              ".addE('knows').to(g.V().has('person','id',dst))"
              ".property('since', since)")
@@ -93,11 +90,7 @@ def load():
 
 
 def _run_pool(op, items, label):
-    """Run op(client, item) across LOAD_THREADS persistent clients.
-
-    Each worker thread owns one Gremlin client for its whole lifetime to
-    avoid a websocket handshake per operation.
-    """
+    """Run op(client, item) across LOAD_THREADS persistent clients."""
     q = queue.Queue()
     for it in items:
         q.put(it)
@@ -139,7 +132,6 @@ def _retry(op, c, item, attempts=6):
             op(c, item)
             return True
         except Exception:
-            # 429 throttling -> exponential backoff
             time.sleep(0.05 * (2 ** a))
     return False
 
@@ -154,29 +146,36 @@ def bench():
             _submit(c, "g.V().has('person','id',vid).values('name')",
                     {"vid": str(ids[i])})
 
-        def one_hop(i):
-            _submit(c, "g.V().has('person','id',vid).out('knows').id()",
-                    {"vid": str(ids[i])})
-
-        def two_hop(i):
-            _submit(c, "g.V().has('person','id',vid).out('knows')"
-                       ".out('knows').dedup().count()", {"vid": str(ids[i])})
-
         def three_hop(i):
             _submit(c, "g.V().has('person','id',vid).out('knows')"
                        ".out('knows').out('knows').dedup().count()",
                     {"vid": str(ids[i])})
 
+        def four_hop(i):
+            _submit(c, "g.V().has('person','id',vid).out('knows')"
+                       ".out('knows').out('knows').out('knows').dedup().count()",
+                    {"vid": str(ids[i])})
+
+        def five_hop(i):
+            _submit(c, "g.V().has('person','id',vid).out('knows')"
+                       ".out('knows').out('knows').out('knows').out('knows')"
+                       ".dedup().count()",
+                    {"vid": str(ids[i])})
+
         def shortest_path(i):
             src, dst = pairs[i]
             _submit(c, "g.V().has('person','id',s).repeat(out('knows').simplePath())"
-                       ".until(has('id',d).or().loops().is(5)).has('id',d)"
+                       ".until(has('id',d).or().loops().is(7)).has('id',d)"
                        ".path().limit(1).count(local)",
                     {"s": str(src), "d": str(dst)})
 
-        fns = {"point_lookup": point_lookup, "one_hop": one_hop,
-               "two_hop": two_hop, "three_hop": three_hop,
-               "shortest_path": shortest_path}
+        fns = {
+            "point_lookup": point_lookup,
+            "three_hop": three_hop,
+            "four_hop": four_hop,
+            "five_hop": five_hop,
+            "shortest_path": shortest_path,
+        }
         for key, _desc in bc.OPERATIONS:
             print(f"Running {key}...")
             results[key] = bc.time_op(fns[key])

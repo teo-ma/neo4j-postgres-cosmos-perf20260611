@@ -7,10 +7,10 @@ import os
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 OPS = [
     ("point_lookup", "Point lookup (by id)"),
-    ("one_hop", "1-hop neighbors"),
-    ("two_hop", "2-hop count (FoF)"),
     ("three_hop", "3-hop count"),
-    ("shortest_path", "Shortest path (<=5)"),
+    ("four_hop", "4-hop count"),
+    ("five_hop", "5-hop count"),
+    ("shortest_path", "Shortest path (<=7)"),
 ]
 ENGINE_LABELS = {
     "neo4j": "Neo4j Community (VM)",

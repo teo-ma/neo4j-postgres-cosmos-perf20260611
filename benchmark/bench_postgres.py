@@ -86,21 +86,28 @@ def bench():
             c.execute("SELECT name FROM person WHERE id=%s", (ids[i],))
             c.fetchall()
 
-        def one_hop(i):
-            c.execute("SELECT dst FROM knows WHERE src=%s", (ids[i],))
-            c.fetchall()
-
-        def two_hop(i):
-            c.execute(
-                "SELECT count(DISTINCT k2.dst) FROM knows k1 "
-                "JOIN knows k2 ON k1.dst=k2.src WHERE k1.src=%s", (ids[i],))
-            c.fetchall()
-
         def three_hop(i):
             c.execute(
                 "SELECT count(DISTINCT k3.dst) FROM knows k1 "
                 "JOIN knows k2 ON k1.dst=k2.src "
                 "JOIN knows k3 ON k2.dst=k3.src WHERE k1.src=%s", (ids[i],))
+            c.fetchall()
+
+        def four_hop(i):
+            c.execute(
+                "SELECT count(DISTINCT k4.dst) FROM knows k1 "
+                "JOIN knows k2 ON k1.dst=k2.src "
+                "JOIN knows k3 ON k2.dst=k3.src "
+                "JOIN knows k4 ON k3.dst=k4.src WHERE k1.src=%s", (ids[i],))
+            c.fetchall()
+
+        def five_hop(i):
+            c.execute(
+                "SELECT count(DISTINCT k5.dst) FROM knows k1 "
+                "JOIN knows k2 ON k1.dst=k2.src "
+                "JOIN knows k3 ON k2.dst=k3.src "
+                "JOIN knows k4 ON k3.dst=k4.src "
+                "JOIN knows k5 ON k4.dst=k5.src WHERE k1.src=%s", (ids[i],))
             c.fetchall()
 
         def shortest_path(i):
@@ -110,13 +117,14 @@ def bench():
                 "  SELECT %s::int, 0"
                 "  UNION ALL"
                 "  SELECT k.dst, b.depth+1 FROM bfs b "
-                "    JOIN knows k ON k.src=b.node WHERE b.depth < 5"
+                "    JOIN knows k ON k.src=b.node WHERE b.depth < 7"
                 ") SELECT min(depth) FROM bfs WHERE node=%s",
                 (src, dst))
             c.fetchall()
 
-        fns = {"point_lookup": point_lookup, "one_hop": one_hop,
-               "two_hop": two_hop, "three_hop": three_hop,
+        fns = {"point_lookup": point_lookup,
+               "three_hop": three_hop, "four_hop": four_hop,
+               "five_hop": five_hop,
                "shortest_path": shortest_path}
         for key, _desc in bc.OPERATIONS:
             print(f"Running {key}...")

@@ -22,10 +22,10 @@ WARMUP = 20
 # Operations every engine must implement (key -> human description)
 OPERATIONS = [
     ("point_lookup", "Point lookup by person id"),
-    ("one_hop", "1-hop neighbors (direct friends)"),
-    ("two_hop", "2-hop reachable distinct count (friends-of-friends)"),
     ("three_hop", "3-hop reachable distinct count"),
-    ("shortest_path", "Shortest path between two persons (<=5 hops)"),
+    ("four_hop", "4-hop reachable distinct count"),
+    ("five_hop", "5-hop reachable distinct count"),
+    ("shortest_path", "Shortest path between two persons (<=7 hops)"),
 ]
 
 

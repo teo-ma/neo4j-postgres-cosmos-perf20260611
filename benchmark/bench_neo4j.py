@@ -79,26 +79,27 @@ def bench(driver):
             s.run("MATCH (p:Person {id:$id}) RETURN p.name",
                   id=ids[i]).consume()
 
-        def one_hop(i):
-            s.run("MATCH (p:Person {id:$id})-[:KNOWS]->(f) RETURN f.id",
-                  id=ids[i]).consume()
-
-        def two_hop(i):
-            s.run("MATCH (p:Person {id:$id})-[:KNOWS*2]->(f) "
-                  "RETURN count(DISTINCT f)", id=ids[i]).consume()
-
         def three_hop(i):
             s.run("MATCH (p:Person {id:$id})-[:KNOWS*3]->(f) "
+                  "RETURN count(DISTINCT f)", id=ids[i]).consume()
+
+        def four_hop(i):
+            s.run("MATCH (p:Person {id:$id})-[:KNOWS*4]->(f) "
+                  "RETURN count(DISTINCT f)", id=ids[i]).consume()
+
+        def five_hop(i):
+            s.run("MATCH (p:Person {id:$id})-[:KNOWS*5]->(f) "
                   "RETURN count(DISTINCT f)", id=ids[i]).consume()
 
         def shortest_path(i):
             src, dst = pairs[i]
             s.run("MATCH (a:Person {id:$s}),(b:Person {id:$d}), "
-                  "p = shortestPath((a)-[:KNOWS*..5]->(b)) RETURN length(p)",
+                  "p = shortestPath((a)-[:KNOWS*..7]->(b)) RETURN length(p)",
                   s=src, d=dst).consume()
 
-        fns = {"point_lookup": point_lookup, "one_hop": one_hop,
-               "two_hop": two_hop, "three_hop": three_hop,
+        fns = {"point_lookup": point_lookup,
+               "three_hop": three_hop, "four_hop": four_hop,
+               "five_hop": five_hop,
                "shortest_path": shortest_path}
         for key, _desc in bc.OPERATIONS:
             print(f"Running {key}...")
