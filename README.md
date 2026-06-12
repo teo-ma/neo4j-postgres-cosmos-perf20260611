@@ -1,30 +1,40 @@
-# Neo4j / PostgreSQL / Cosmos DB Graph Performance Benchmark
+# Neo4j / PostgreSQL / Cosmos DB 图数据库性能对比
 
-## Executive Summary
+## 项目结论
 
-This project compares three graph-capable data stores on the same synthetic social graph workload:
+本项目在 Azure 上使用同一份合成社交图数据，对三种图相关存储方案进行了性能对比：
 
-- Neo4j Community Edition on an Azure VM
+- Neo4j Community Edition，部署在 Azure VM 上
 - Azure Database for PostgreSQL Flexible Server
 - Azure Cosmos DB Gremlin API
 
-The benchmark shows a clear split in suitability:
+测试结果显示，这三类数据库的适用场景非常不同：
 
-- PostgreSQL is the fastest option for point lookups and shallow traversals.
-- Neo4j is the strongest option for multi-hop traversal and shortest-path queries.
-- Cosmos DB Gremlin is functional for graph storage, but it is much slower on traversal-heavy workloads.
+- PostgreSQL 在点查和浅层遍历上最快
+- Neo4j 在多跳遍历和最短路径上最强，且延迟更稳定
+- Cosmos DB Gremlin 可以完成图存储与查询，但在遍历型负载下明显更慢
 
-For reporting purposes, the most relevant metric is not the single fastest query, but how the engine behaves as traversal depth increases and whether tail latency remains stable.
+如果你的核心工作负载是知识图谱探索、路径推理、证据链追踪，最应该关注的是多跳遍历和最短路径的延迟，而不是单纯的点查结果。
 
-## Scope and Methodology
+## 配置与测试范围
 
-- Data set: 100,000 nodes and 1,000,000 edges
-- Graph shape: synthetic social graph with skewed hubs
-- Execution environment: all benchmarks ran from the same Azure VM in `centralus`
-- Measurement model: 200 measured runs per operation, after warmup
-- Operations tested: point lookup, 1-hop neighbors, 2-hop count, 3-hop count, shortest path up to 5 hops
+### Azure 资源配置
 
-Generated outputs and the full result report are stored in `results/`:
+| 组件 | 规格 | CPU / 内存 | 其他关键配置 |
+|---|---|---:|---|
+| Neo4j VM | `Standard_D4s_v5` | 4 vCPU / 16 GiB | Ubuntu 22.04，Premium SSD 数据盘，单机部署 |
+| PostgreSQL Flexible Server | `Standard_D4ds_v5` | 4 vCore / 16 GiB | PostgreSQL 16，128 GB 存储，General Purpose，未开启 HA |
+| Cosmos DB Gremlin | Gremlin API | 按 RU/s 计费 | 图数据库 `graphdb.social`，分区键 `/pk` |
+
+### 数据规模与测试方式
+
+- 数据规模：100,000 个节点，1,000,000 条边
+- 图形状：带有 hub 偏斜的合成社交图
+- 执行位置：全部从同一台 Azure VM（`centralus`）发起请求，尽量保证网络口径一致
+- 计量方式：每个操作 200 次正式测量，前置 warmup
+- 测试操作：点查、1 跳邻居、2 跳计数、3 跳计数、最短路径（最多 5 跳）
+
+### 结果文件
 
 - `results/result_neo4j.json`
 - `results/result_postgresql.json`
@@ -32,49 +42,87 @@ Generated outputs and the full result report are stored in `results/`:
 - `results/REPORT.md`
 - `results/benchmark_p50_comparison.png`
 
-## Results Summary
+## 性能结果
 
-### P50 latency in milliseconds
+### P50 延迟（毫秒）
 
-| Operation | Neo4j Community | PostgreSQL Flexible | Cosmos DB Gremlin |
+| 操作 | Neo4j Community | PostgreSQL Flexible | Cosmos DB Gremlin |
 |---|---:|---:|---:|
-| Point lookup (by id) | 2.37 | 0.18 | 5.53 |
-| 1-hop neighbors | 2.57 | 0.21 | 14.41 |
-| 2-hop count (FoF) | 2.10 | 0.43 | 33.50 |
-| 3-hop count | 2.51 | 1.28 | 134.93 |
-| Shortest path (<=5) | 1.97 | 138.63 | 10631.36 |
+| 点查（按 id） | 2.37 | 0.18 | 5.53 |
+| 1 跳邻居 | 2.57 | 0.21 | 14.41 |
+| 2 跳计数（FoF） | 2.10 | 0.43 | 33.50 |
+| 3 跳计数 | 2.51 | 1.28 | 134.93 |
+| 最短路径（<=5） | 1.97 | 138.63 | 10631.36 |
 
-### Interpretation
+### 结果解读
 
-- PostgreSQL performs best when the workload is dominated by indexed entity lookups and shallow joins.
-- Neo4j maintains low and stable latency as traversal depth grows, which is the key requirement for interactive graph exploration.
-- Cosmos DB Gremlin incurs significant overhead for traversal-heavy queries, especially shortest path, where network and distributed execution costs dominate.
+- PostgreSQL 更适合以实体检索、浅层关联查询为主的场景
+- Neo4j 更适合图遍历、路径解释和交互式推理
+- Cosmos DB Gremlin 的优势更多体现在托管与分布式能力，而不是低延迟遍历
 
-### Visualization
+### 可视化
 
-![P50 graph database comparison](results/benchmark_p50_comparison.png)
+![P50 图数据库性能对比](results/benchmark_p50_comparison.png)
 
-## Implications for Drug Discovery
+## 药物研发场景如何理解
 
-In drug discovery, the highest-value queries are usually multi-hop and explainable: target discovery, pathway tracing, drug repurposing, and evidence-chain analysis across genes, proteins, compounds, diseases, and literature. For these workloads, the most important indicators are multi-hop latency, shortest-path latency, and tail latency at P95/P99.
+如果把这组测试映射到药物研发，最有价值的查询通常是多跳、可解释的：
 
-Practical reading of this benchmark:
+- 靶点发现
+- 通路追踪
+- 药物再定位
+- 基因、蛋白、化合物、疾病、文献之间的证据链分析
 
-- Neo4j is the best fit when graph traversal and path explanation are part of the core analysis workflow.
-- PostgreSQL is appropriate for structured lookups, light relationship navigation, and broader relational support.
-- Cosmos DB Gremlin is a better fit for managed, distributed access patterns than for latency-sensitive research exploration.
+这类任务真正重要的是：
 
-## Reproducibility
+- 多跳延迟
+- 最短路径延迟
+- P95 / P99 尾延迟
 
-Main scripts:
+因此，若你的图数据库主要服务于研发分析和知识推理，Neo4j 的结果最具参考意义；如果主要是结构化检索和浅层关联，PostgreSQL 更经济；如果重点是托管和全球分布式访问，则可以考虑 Cosmos DB Gremlin，但要接受遍历性能和成本的代价。
 
-- `benchmark/generate_data.py` generates the data set
-- `benchmark/bench_neo4j.py` loads and benchmarks Neo4j
-- `benchmark/bench_postgres.py` loads and benchmarks PostgreSQL
-- `benchmark/bench_cosmos.py` loads and benchmarks Cosmos Gremlin
-- `benchmark/make_report.py` builds `results/REPORT.md`
+## 成本对比
 
-Infrastructure helpers:
+### 成本口径
+
+- 价格口径：Azure 公共零售价，`centralus`
+- 仅计算持续运行的基础资源费用，不含税费、流量、备份和折扣
+- 月成本按约 `730 小时/月` 估算
+
+### 计算单价
+
+| 组件 | 按量单价 | 说明 |
+|---|---:|---|
+| Neo4j VM `Standard_D4s_v5` | `$0.217 / 小时` | Linux VM 计算费 |
+| PostgreSQL `Standard_D4ds_v5` | `$0.402 / 小时` | Flexible Server 计算费 |
+| Cosmos DB Gremlin | `$0.008 / 小时 / 100 RU/s` | 按 RU/s 线性计费 |
+
+### 月成本估算
+
+| 组件 | 当前配置 | 估算月成本 |
+|---|---|---:|
+| Neo4j VM | 4 vCPU / 16 GiB | 约 `$158/月` |
+| PostgreSQL Flexible Server | 4 vCore / 16 GiB / 128 GB 存储 | 约 `$294/月`（存储另计，量级较小） |
+| Cosmos DB Gremlin（测试时 10,000 RU/s） | 10,000 RU/s | 约 `$584/月` |
+| Cosmos DB Gremlin（加载阶段 40,000 RU/s） | 40,000 RU/s | 约 `$2,336/月` |
+
+### 成本结论
+
+- Neo4j 与 PostgreSQL 都属于同一档位的单机/托管数据库成本，差距主要体现在托管开销
+- Cosmos DB Gremlin 的费用由 RU/s 决定，吞吐越高，成本增长越快
+- 如果长期维持高 RU/s，Cosmos 的成本会显著高于前两者
+
+## 复现方式
+
+主要脚本位于 `benchmark/` 和 `infra/`：
+
+- `benchmark/generate_data.py`：生成测试数据
+- `benchmark/bench_neo4j.py`：加载并测试 Neo4j
+- `benchmark/bench_postgres.py`：加载并测试 PostgreSQL
+- `benchmark/bench_cosmos.py`：加载并测试 Cosmos Gremlin
+- `benchmark/make_report.py`：生成 `results/REPORT.md`
+
+基础设施脚本：
 
 - `infra/provision_neo4j_vm.sh`
 - `infra/provision_postgres.sh`
@@ -82,10 +130,11 @@ Infrastructure helpers:
 - `infra/ssh_vm.sh`
 - `infra/teardown.sh`
 
-## Cleanup
+## 清理资源
 
-When the comparison is no longer needed, delete the Azure resources to stop billing:
+测试结束后建议删除 Azure 资源，避免持续计费：
 
 ```bash
 bash infra/teardown.sh
 ```
+
