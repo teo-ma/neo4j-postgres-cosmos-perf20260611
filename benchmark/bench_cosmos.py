@@ -26,6 +26,15 @@ GRAPH = os.environ.get("COSMOS_GRAPH", "social")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 LOAD_THREADS = int(os.environ.get("COSMOS_LOAD_THREADS", "32"))
 
+# Deep-hop traversals on a hub-skewed graph can fan out combinatorially and
+# never return on Cosmos Gremlin. Bound them with a per-query timeout and a
+# smaller iteration count so the benchmark always produces results; a timed-out
+# query is recorded at the timeout value as a penalty latency.
+SHALLOW_TIMEOUT = float(os.environ.get("COSMOS_SHALLOW_TIMEOUT", "30"))
+DEEP_TIMEOUT = float(os.environ.get("COSMOS_DEEP_TIMEOUT", "20"))
+DEEP_ITERS = int(os.environ.get("COSMOS_DEEP_ITERS", "20"))
+DEEP_WARMUP = int(os.environ.get("COSMOS_DEEP_WARMUP", "2"))
+
 
 def _ensure_event_loop():
     """gremlinpython's aiohttp transport needs an event loop bound to the current thread."""
@@ -47,6 +56,36 @@ def make_client():
 
 def _submit(c, query, bindings=None):
     return c.submit(query, bindings or {}).all().result()
+
+
+def _submit_timed(c, query, bindings, timeout):
+    """Submit a query and wait at most `timeout` seconds for full results."""
+    fut = c.submitAsync(query, bindings or {})
+    rs = fut.result(timeout=timeout)
+    return rs.all().result(timeout=timeout)
+
+
+def _timed_op(fn, iterations, warmup, timeout):
+    """Run fn(i); record latency in ms. A timeout/error counts as a penalty
+    latency equal to `timeout` and is tallied separately."""
+    for i in range(warmup):
+        try:
+            fn(i)
+        except Exception:
+            pass
+    lat = []
+    timeouts = 0
+    for i in range(iterations):
+        t0 = time.perf_counter()
+        try:
+            fn(i)
+            lat.append((time.perf_counter() - t0) * 1000.0)
+        except Exception:
+            timeouts += 1
+            lat.append(timeout * 1000.0)
+    stats = bc.percentiles(lat)
+    stats["timeouts"] = timeouts
+    return stats
 
 
 def load():
@@ -143,43 +182,46 @@ def bench():
     results = {}
     try:
         def point_lookup(i):
-            _submit(c, "g.V().has('person','id',vid).values('name')",
-                    {"vid": str(ids[i])})
+            _submit_timed(c, "g.V().has('person','id',vid).values('name')",
+                          {"vid": str(ids[i])}, SHALLOW_TIMEOUT)
 
         def three_hop(i):
-            _submit(c, "g.V().has('person','id',vid).out('knows')"
-                       ".out('knows').out('knows').dedup().count()",
-                    {"vid": str(ids[i])})
+            _submit_timed(c, "g.V().has('person','id',vid).out('knows')"
+                             ".out('knows').out('knows').dedup().count()",
+                          {"vid": str(ids[i])}, SHALLOW_TIMEOUT)
 
         def four_hop(i):
-            _submit(c, "g.V().has('person','id',vid).out('knows')"
-                       ".out('knows').out('knows').out('knows').dedup().count()",
-                    {"vid": str(ids[i])})
+            _submit_timed(c, "g.V().has('person','id',vid).out('knows')"
+                             ".out('knows').out('knows').out('knows').dedup().count()",
+                          {"vid": str(ids[i])}, DEEP_TIMEOUT)
 
         def five_hop(i):
-            _submit(c, "g.V().has('person','id',vid).out('knows')"
-                       ".out('knows').out('knows').out('knows').out('knows')"
-                       ".dedup().count()",
-                    {"vid": str(ids[i])})
+            _submit_timed(c, "g.V().has('person','id',vid).out('knows')"
+                             ".out('knows').out('knows').out('knows').out('knows')"
+                             ".dedup().count()",
+                          {"vid": str(ids[i])}, DEEP_TIMEOUT)
 
         def shortest_path(i):
             src, dst = pairs[i]
-            _submit(c, "g.V().has('person','id',s).repeat(out('knows').simplePath())"
-                       ".until(has('id',d).or().loops().is(7)).has('id',d)"
-                       ".path().limit(1).count(local)",
-                    {"s": str(src), "d": str(dst)})
+            _submit_timed(c, "g.V().has('person','id',s).repeat(out('knows').simplePath())"
+                             ".until(has('id',d).or().loops().is(7)).has('id',d)"
+                             ".path().limit(1).count(local)",
+                          {"s": str(src), "d": str(dst)}, DEEP_TIMEOUT)
 
-        fns = {
-            "point_lookup": point_lookup,
-            "three_hop": three_hop,
-            "four_hop": four_hop,
-            "five_hop": five_hop,
-            "shortest_path": shortest_path,
+        # (function, iterations, warmup, timeout) per operation. Deep traversals
+        # use fewer iterations + a tighter timeout so the run stays bounded.
+        cfg = {
+            "point_lookup": (point_lookup, bc.ITERATIONS, bc.WARMUP, SHALLOW_TIMEOUT),
+            "three_hop": (three_hop, bc.ITERATIONS, bc.WARMUP, SHALLOW_TIMEOUT),
+            "four_hop": (four_hop, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
+            "five_hop": (five_hop, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
+            "shortest_path": (shortest_path, DEEP_ITERS, DEEP_WARMUP, DEEP_TIMEOUT),
         }
         for key, _desc in bc.OPERATIONS:
-            print(f"Running {key}...")
-            results[key] = bc.time_op(fns[key])
-            print(f"  {results[key]}")
+            fn, iters, warm, timeout = cfg[key]
+            print(f"Running {key} (iters={iters}, timeout={timeout}s)...", flush=True)
+            results[key] = _timed_op(fn, iters, warm, timeout)
+            print(f"  {results[key]}", flush=True)
     finally:
         c.close()
     bc.save_result("cosmos_gremlin", results)
