@@ -14,6 +14,8 @@
 - PostgreSQL 在点查和中低跳计数上极快，但最短证据链（层级同步 BFS）成本明显上升，P50 约 15 ms、P95 约 60 ms
 - Cosmos DB Gremlin 在 3/4 跳已显著变慢（4 跳 P50 约 0.6 秒），最短证据链全部触发服务端超时（20/20）而无法返回
 
+补充来看，浅层查询（点查、2 跳计数）上 PostgreSQL 表现最好，Neo4j 也能稳定保持毫秒级，但总体略慢于 PostgreSQL；Cosmos DB Gremlin 的点查尚可，一旦进入 2 跳后延迟就明显上升。
+
 结论：若图数据库主要服务于药物研发分析和知识推理（多跳通路、证据链、靶点发现），**Neo4j 是唯一能在毫秒级稳定完成深度通路遍历与证据链的引擎**；PostgreSQL 适合浅层结构化检索与中低跳计数；Cosmos DB Gremlin 在这类深跳证据链负载下并不适用。
 
 ## 配置与测试范围
@@ -51,6 +53,7 @@
 - `results/result_cosmos_gremlin.json`
 - `results/REPORT.md`
 - `results/benchmark_p50_comparison.png`
+- `results/benchmark_p95_comparison.png`
 
 ## 性能结果
 
@@ -86,7 +89,15 @@
 
 ### 可视化
 
+**P50 延迟对比（典型性能）**
+
 ![P50 图数据库性能对比](results/benchmark_p50_comparison.png)
+
+**P95 延迟对比（尾部体验）**
+
+![P95 图数据库性能对比](results/benchmark_p95_comparison.png)
+
+> P95 更能反映真实用户在高负载或偶发慢查询时的体验，是选型时重要的参考指标。
 
 ## 药物研发场景如何理解
 
@@ -152,6 +163,7 @@
 - `benchmark/bench_cosmos.py`：加载并测试 Cosmos Gremlin
 - `benchmark/make_report.py`：生成 `results/REPORT.md`
 - `benchmark/make_plot.py`：生成 `results/benchmark_p50_comparison.png`（对数刻度 P50 对比图）
+- `benchmark/make_plot_p95.py`：生成 `results/benchmark_p95_comparison.png`（对数刻度 P95 对比图）
 
 基础设施脚本：
 
